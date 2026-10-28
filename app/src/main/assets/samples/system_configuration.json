@@ -1,0 +1,55 @@
+{
+  "system": {
+    "name": "Universal Reader Runtime",
+    "version": "1.0.0",
+    "build": 20261028,
+    "environment": "Native Android Jetpack Compose",
+    "offlineOnly": true
+  },
+  "features": {
+    "pdfRenderer": {
+      "enabled": true,
+      "maxCachePages": 12,
+      "renderDpiScale": 2.0,
+      "hardwareAcceleration": true
+    },
+    "openXml": {
+      "docx": {
+        "supported": true,
+        "parseStyles": true,
+        "tableSupport": true
+      },
+      "xlsx": {
+        "supported": true,
+        "multiSheet": true,
+        "maxRowLimit": 10000
+      },
+      "pptx": {
+        "supported": true,
+        "slideAspect": "16:9"
+      }
+    },
+    "privacy": {
+      "telemetry": false,
+      "analytics": false,
+      "networkPermitted": false,
+      "safUriPersistence": true
+    }
+  },
+  "theme": {
+    "light": {
+      "background": "#FAF9F6",
+      "surface": "#FFFFFF",
+      "primaryText": "#20201E",
+      "secondaryText": "#777670",
+      "accent": "#315E78"
+    },
+    "dark": {
+      "background": "#151513",
+      "surface": "#1D1D1A",
+      "primaryText": "#F0EFEA",
+      "secondaryText": "#AAA9A2",
+      "accent": "#6897B5"
+    }
+  }
+}

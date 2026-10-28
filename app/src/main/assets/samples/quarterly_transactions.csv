@@ -1,0 +1,9 @@
+Date,Region,Product,Units Sold,Unit Price,Total Revenue,Payment Method,Status
+2026-10-01,North America,"Universal Reader Pro, Single License",142,49.99,7098.58,Credit Card,Settled
+2026-10-02,Europe,"Universal Enterprise Suite (50 Seats)",12,1200.00,14400.00,Wire Transfer,Settled
+2026-10-03,Asia-Pacific,"Technical Support Retainer, Annual",5,3500.00,17500.00,ACH,Settled
+2026-10-04,North America,"Universal Reader Pro, Team Pack",35,199.00,6965.00,Credit Card,Settled
+2026-10-05,Latin America,"Universal Reader Standard",88,29.99,2639.12,PayPal,Settled
+2026-10-06,Europe,"Universal Reader Pro, Single License",115,49.99,5748.85,Credit Card,Settled
+2026-10-07,Middle East,"Enterprise Deployment On-Premise",2,8500.00,17000.00,Wire Transfer,Pending
+2026-10-08,North America,"Custom Format Handler Extension",8,950.00,7600.00,Credit Card,Settled

@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<application-configuration version="1.0" build="20261028">
+    <runtime-security>
+        <network-security-config enabled="false" allow-cleartext="false" />
+        <storage-access mode="StorageAccessFramework" persist-permissions="true" />
+        <local-database engine="RoomSQLite" encrypted="false" />
+    </runtime-security>
+    <document-handlers>
+        <handler extension="pdf" mime-type="application/pdf" priority="10" />
+        <handler extension="docx" mime-type="application/vnd.openxmlformats-officedocument.wordprocessingml.document" priority="20" />
+        <handler extension="xlsx" mime-type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" priority="30" />
+        <handler extension="pptx" mime-type="application/vnd.openxmlformats-officedocument.presentationml.presentation" priority="40" />
+        <handler extension="csv" mime-type="text/csv" priority="50" />
+        <handler extension="md" mime-type="text/markdown" priority="60" />
+        <handler extension="epub" mime-type="application/epub+zip" priority="70" />
+    </document-handlers>
+    <typography-spec>
+        <scale name="title" size="28sp" weight="Medium" />
+        <scale name="section" size="17sp" weight="Medium" />
+        <scale name="filename" size="16sp" weight="Medium" />
+        <scale name="body" size="15sp" weight="Normal" />
+        <scale name="metadata" size="12sp" weight="Normal" />
+    </typography-spec>
+</application-configuration>
