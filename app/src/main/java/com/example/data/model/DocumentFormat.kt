@@ -37,19 +37,20 @@ enum class DocumentFormat(
         fun fromFileNameOrMime(name: String, mime: String?): DocumentFormat {
             val lowerName = name.lowercase()
             val ext = lowerName.substringAfterLast('.', "")
+            val lowerMime = mime?.lowercase() ?: ""
 
             return when {
-                ext == "pdf" || mime == "application/pdf" -> PDF
-                ext in listOf("docx", "doc") || mime?.contains("word") == true -> WORD
-                ext in listOf("xlsx", "xls") || mime?.contains("spreadsheetml") == true || mime?.contains("ms-excel") == true -> EXCEL
-                ext in listOf("pptx", "ppt") || mime?.contains("presentationml") == true || mime?.contains("ms-powerpoint") == true -> POWERPOINT
-                ext in listOf("csv", "tsv") || mime == "text/csv" || mime == "text/tab-separated-values" -> CSV
-                ext in listOf("md", "markdown") || mime == "text/markdown" -> MARKDOWN
-                ext in listOf("json", "jsonl") || mime == "application/json" -> JSON
-                ext in listOf("xml", "html", "htm") || mime == "application/xml" || mime == "text/xml" || mime == "text/html" -> XML
-                ext in listOf("png", "jpg", "jpeg", "webp", "bmp", "gif") || mime?.startsWith("image/") == true -> IMAGE
-                ext == "epub" || mime == "application/epub+zip" -> EPUB
-                ext in listOf("txt", "log", "ini", "conf", "yaml", "yml", "gradle", "kt", "java") || mime?.startsWith("text/") == true -> TEXT
+                ext == "pdf" || lowerMime == "application/pdf" -> PDF
+                ext in listOf("docx", "doc", "dotx", "dot") || lowerMime.contains("word") -> WORD
+                ext in listOf("xlsx", "xls", "xltx", "xlt") || lowerMime.contains("spreadsheetml") || lowerMime.contains("ms-excel") || lowerMime.contains("excel") -> EXCEL
+                ext in listOf("pptx", "ppt", "pps", "ppsx", "pot", "potx") || lowerMime.contains("presentationml") || lowerMime.contains("ms-powerpoint") || lowerMime.contains("powerpoint") -> POWERPOINT
+                ext in listOf("csv", "tsv") || lowerMime == "text/csv" || lowerMime == "text/tab-separated-values" || lowerMime.contains("comma-separated") -> CSV
+                ext in listOf("md", "markdown") || lowerMime == "text/markdown" -> MARKDOWN
+                ext in listOf("json", "jsonl") || lowerMime == "application/json" -> JSON
+                ext in listOf("xml", "html", "htm") || lowerMime == "application/xml" || lowerMime == "text/xml" || lowerMime == "text/html" -> XML
+                ext in listOf("png", "jpg", "jpeg", "webp", "bmp", "gif") || lowerMime.startsWith("image/") -> IMAGE
+                ext == "epub" || lowerMime == "application/epub+zip" -> EPUB
+                ext in listOf("txt", "log", "ini", "conf", "yaml", "yml", "gradle", "kt", "java") || lowerMime.startsWith("text/") -> TEXT
                 else -> UNKNOWN
             }
         }

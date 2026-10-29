@@ -71,7 +71,7 @@ class ExcelHandler(private val context: Context) {
         var insideSi = false
 
         while (eventType != XmlPullParser.END_DOCUMENT) {
-            val tag = parser.name
+            val tag = parser.name?.substringAfterLast(':')?.lowercase() ?: ""
             when (eventType) {
                 XmlPullParser.START_TAG -> {
                     if (tag == "si") {
@@ -101,7 +101,8 @@ class ExcelHandler(private val context: Context) {
 
         var eventType = parser.eventType
         while (eventType != XmlPullParser.END_DOCUMENT) {
-            if (eventType == XmlPullParser.START_TAG && parser.name == "sheet") {
+            val localTag = parser.name?.substringAfterLast(':')?.lowercase() ?: ""
+            if (eventType == XmlPullParser.START_TAG && localTag == "sheet") {
                 val name = parser.getAttributeValue(null, "name")
                 if (!name.isNullOrBlank()) {
                     list.add(name)
@@ -128,7 +129,7 @@ class ExcelHandler(private val context: Context) {
         var maxColIndex = 0
 
         while (eventType != XmlPullParser.END_DOCUMENT) {
-            val tag = parser.name
+            val tag = parser.name?.substringAfterLast(':')?.lowercase() ?: ""
             when (eventType) {
                 XmlPullParser.START_TAG -> {
                     when (tag) {

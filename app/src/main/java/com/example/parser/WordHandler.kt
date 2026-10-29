@@ -71,7 +71,7 @@ class WordHandler(private val context: Context) {
         var runColor: String? = null
 
         while (eventType != XmlPullParser.END_DOCUMENT) {
-            val tag = parser.name
+            val tag = parser.name?.substringAfterLast(':')?.lowercase() ?: ""
             when (eventType) {
                 XmlPullParser.START_TAG -> {
                     when (tag) {
@@ -92,11 +92,13 @@ class WordHandler(private val context: Context) {
                             isBullet = false
                             paragraphRuns = mutableListOf()
                         }
-                        "pStyle" -> {
-                            val v = parser.getAttributeValue(null, "val") ?: ""
+                        "pstyle", "pStyle" -> {
+                            val v = parser.getAttributeValue(null, "val")
+                                ?: parser.getAttributeValue("http://schemas.openxmlformats.org/wordprocessingml/2006/main", "val")
+                                ?: ""
                             pStyle = v
                         }
-                        "numPr" -> {
+                        "numpr", "numPr" -> {
                             isBullet = true
                         }
                         "r" -> {

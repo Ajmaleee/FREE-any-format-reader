@@ -46,6 +46,8 @@ fun PdfViewer(
     var offsetX by remember { mutableStateOf(0f) }
     var offsetY by remember { mutableStateOf(0f) }
     var showJumpDialog by remember { mutableStateOf(false) }
+    var isNightReadingMode by remember { mutableStateOf(false) }
+    var showNightModeInfo by remember { mutableStateOf(false) }
 
     LaunchedEffect(listState.firstVisibleItemIndex) {
         val visible = listState.firstVisibleItemIndex
@@ -91,7 +93,8 @@ fun PdfViewer(
                     PdfPageItem(
                         pdf = pdf,
                         pdfHandler = pdfHandler,
-                        pageIndex = pageIndex
+                        pageIndex = pageIndex,
+                        isNightReadingMode = isNightReadingMode
                     )
                 }
             }
@@ -107,12 +110,13 @@ fun PdfViewer(
                     pdf = pdf,
                     pdfHandler = pdfHandler,
                     pageIndex = currentPage,
+                    isNightReadingMode = isNightReadingMode,
                     modifier = Modifier.fillMaxWidth().wrapContentHeight()
                 )
             }
         }
 
-        // Bottom floating navigation bar for page controls
+        // Bottom floating navigation bar for page controls (adapts to theme)
         Surface(
             modifier = Modifier
                 .align(Alignment.BottomCenter)
@@ -125,7 +129,7 @@ fun PdfViewer(
             Row(
                 modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
             ) {
                 IconButton(
                     onClick = {
@@ -142,6 +146,7 @@ fun PdfViewer(
                     Icon(
                         imageVector = Icons.Default.NavigateBefore,
                         contentDescription = "Previous page",
+                        tint = if (currentPage > 0) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f),
                         modifier = Modifier.size(20.dp)
                     )
                 }
@@ -173,7 +178,24 @@ fun PdfViewer(
                     Icon(
                         imageVector = Icons.Default.NavigateNext,
                         contentDescription = "Next page",
+                        tint = if (currentPage < pdf.pageCount - 1) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f),
                         modifier = Modifier.size(20.dp)
+                    )
+                }
+
+                // Optional Night Reading Mode toggle (warm tint filter without inverting original graphics)
+                IconButton(
+                    onClick = {
+                        isNightReadingMode = !isNightReadingMode
+                        if (isNightReadingMode) showNightModeInfo = true
+                    },
+                    modifier = Modifier.size(36.dp).testTag("pdf_toggle_night_reading")
+                ) {
+                    Icon(
+                        imageVector = if (isNightReadingMode) Icons.Default.DarkMode else Icons.Default.LightMode,
+                        contentDescription = "Toggle night reading filter",
+                        tint = if (isNightReadingMode) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.size(18.dp)
                     )
                 }
 
@@ -190,6 +212,7 @@ fun PdfViewer(
                         Icon(
                             imageVector = Icons.Default.ZoomOutMap,
                             contentDescription = "Reset zoom",
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
                             modifier = Modifier.size(18.dp)
                         )
                     }
@@ -212,6 +235,26 @@ fun PdfViewer(
             }
         )
     }
+
+    if (showNightModeInfo) {
+        AlertDialog(
+            onDismissRequest = { showNightModeInfo = false },
+            title = { Text("Night Reading Mode", style = MaterialTheme.typography.titleMedium) },
+            text = {
+                Text(
+                    text = "Applies a gentle warm ambient filter to reduce glare in dark rooms. Document page colors and diagrams are preserved by default to prevent visual distortion.",
+                    style = MaterialTheme.typography.bodyMedium
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = { showNightModeInfo = false }) {
+                    Text("Got it")
+                }
+            },
+            containerColor = MaterialTheme.colorScheme.surface,
+            shape = RoundedCornerShape(12.dp)
+        )
+    }
 }
 
 @Composable
@@ -219,6 +262,7 @@ fun PdfPageItem(
     pdf: DocumentContent.Pdf,
     pdfHandler: PdfHandler,
     pageIndex: Int,
+    isNightReadingMode: Boolean = false,
     modifier: Modifier = Modifier
 ) {
     var bitmap by remember(pageIndex) { mutableStateOf<Bitmap?>(null) }
@@ -246,6 +290,15 @@ fun PdfPageItem(
                 contentScale = ContentScale.Fit,
                 modifier = Modifier.fillMaxSize()
             )
+
+            // Optional gentle night reading tint overlay
+            if (isNightReadingMode) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(Color(0xFF2A241C).copy(alpha = 0.12f))
+                )
+            }
         } else if (isLoading) {
             CircularProgressIndicator(
                 modifier = Modifier.size(28.dp),

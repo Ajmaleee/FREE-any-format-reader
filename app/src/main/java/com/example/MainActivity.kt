@@ -9,7 +9,6 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
-import androidx.compose.animation.*
 import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Folder
@@ -35,13 +34,14 @@ import com.example.ui.viewmodel.MainViewModel
 class MainActivity : ComponentActivity() {
 
     private val viewModel: MainViewModel by viewModels()
+    private var isOpenedFromExternalIntent = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
 
         // Handle incoming document intent from external apps
-        handleIntent(intent)
+        isOpenedFromExternalIntent = handleIntent(intent)
 
         setContent {
             val preferences by viewModel.preferences.collectAsStateWithLifecycle()
@@ -56,6 +56,7 @@ class MainActivity : ComponentActivity() {
                 contract = ActivityResultContracts.OpenDocument()
             ) { uri: Uri? ->
                 if (uri != null) {
+                    isOpenedFromExternalIntent = false
                     viewModel.openFromUri(uri)
                 }
             }
@@ -76,13 +77,23 @@ class MainActivity : ComponentActivity() {
                             fontSizeSp = preferences.fontSizeSp,
                             showLineNumbers = preferences.showLineNumbers,
                             wordWrap = preferences.wordWrap,
-                            onBack = { viewModel.closeDocument() },
+                            onBack = {
+                                if (isOpenedFromExternalIntent) {
+                                    viewModel.closeDocument()
+                                    finish()
+                                } else {
+                                    viewModel.closeDocument()
+                                }
+                            },
                             onReload = { viewModel.reloadCurrentDocument() },
                             onUpdateReadingProgress = { pos, total ->
                                 viewModel.updateReadingProgress(pos, total)
                             },
                             onRemoveFromHistory = {
                                 viewModel.removeFromHistory(activeDoc!!)
+                                if (isOpenedFromExternalIntent) {
+                                    finish()
+                                }
                             }
                         )
                     } else {
@@ -160,7 +171,10 @@ class MainActivity : ComponentActivity() {
                                                     )
                                                 )
                                             },
-                                            onDocumentClick = { doc -> viewModel.openDocument(doc) },
+                                            onDocumentClick = { doc ->
+                                                isOpenedFromExternalIntent = false
+                                                viewModel.openDocument(doc)
+                                            },
                                             onToggleFavorite = { doc -> viewModel.toggleFavorite(doc) },
                                             onRemoveDocument = { doc -> viewModel.removeFromHistory(doc) },
                                             onNavigateToBrowse = { viewModel.setTab(MainTab.BROWSE) },
@@ -173,7 +187,10 @@ class MainActivity : ComponentActivity() {
                                             onOpenDocumentPicker = {
                                                 documentPickerLauncher.launch(arrayOf("*/*"))
                                             },
-                                            onDocumentClick = { doc -> viewModel.openDocument(doc) },
+                                            onDocumentClick = { doc ->
+                                                isOpenedFromExternalIntent = false
+                                                viewModel.openDocument(doc)
+                                            },
                                             onToggleFavorite = { doc -> viewModel.toggleFavorite(doc) },
                                             onRemoveDocument = { doc -> viewModel.removeFromHistory(doc) }
                                         )
@@ -201,15 +218,46 @@ class MainActivity : ComponentActivity() {
 
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
-        handleIntent(intent)
+        setIntent(intent)
+        // If another document is opened while the app is running, switch directly to the newly requested document
+        isOpenedFromExternalIntent = handleIntent(intent)
     }
 
-    private fun handleIntent(intent: Intent?) {
-        if (intent == null) return
+    private fun handleIntent(intent: Intent?): Boolean {
+        if (intent == null) return false
         val action = intent.action
-        val data = intent.data
-        if (action == Intent.ACTION_VIEW && data != null) {
-            viewModel.openFromUri(data)
+        val mimeType = intent.type
+
+        val uri: Uri? = when (action) {
+            Intent.ACTION_VIEW -> {
+                intent.data ?: intent.clipData?.takeIf { it.itemCount > 0 }?.getItemAt(0)?.uri
+            }
+            Intent.ACTION_SEND -> {
+                // When sharing a file from WhatsApp or other apps, the URI is passed in EXTRA_STREAM or ClipData
+                val streamUri = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
+                    intent.getParcelableExtra(Intent.EXTRA_STREAM, Uri::class.java)
+                } else {
+                    @Suppress("DEPRECATION")
+                    intent.getParcelableExtra(Intent.EXTRA_STREAM) as? Uri
+                }
+                streamUri ?: intent.clipData?.takeIf { it.itemCount > 0 }?.getItemAt(0)?.uri ?: intent.data
+            }
+            Intent.ACTION_SEND_MULTIPLE -> {
+                val streamUris = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
+                    intent.getParcelableArrayListExtra(Intent.EXTRA_STREAM, Uri::class.java)
+                } else {
+                    @Suppress("DEPRECATION")
+                    intent.getParcelableArrayListExtra<Uri>(Intent.EXTRA_STREAM)
+                }
+                streamUris?.firstOrNull() ?: intent.clipData?.takeIf { it.itemCount > 0 }?.getItemAt(0)?.uri
+            }
+            else -> null
         }
+
+        if (uri != null) {
+            viewModel.openFromUri(uri, mimeType)
+            return true
+        }
+        return false
     }
 }

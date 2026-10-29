@@ -15,13 +15,27 @@ import java.io.InputStream
 
 class PdfHandler(private val context: Context) {
 
-    private val bitmapCache = object : LruCache<Int, Bitmap>(15) {
+    // Dynamic memory-based LRU cache (approx 12-24MB depending on device memory)
+    private val maxMemoryKb = (Runtime.getRuntime().maxMemory() / 1024).toInt()
+    private val cacheSizeKb = (maxMemoryKb / 8).coerceIn(8 * 1024, 24 * 1024)
+
+    private val bitmapCache = object : LruCache<Int, Bitmap>(cacheSizeKb) {
+        override fun sizeOf(key: Int, value: Bitmap): Int {
+            return (value.byteCount / 1024).coerceAtLeast(1)
+        }
+
         override fun entryRemoved(evicted: Boolean, key: Int?, oldValue: Bitmap?, newValue: Bitmap?) {
-            // Let GC handle bitmap memory or keep active
+            // Memory freed automatically; recycle if strictly evicted
+            if (evicted && oldValue != null && !oldValue.isRecycled) {
+                oldValue.recycle()
+            }
         }
     }
 
     suspend fun open(uri: Uri, isAsset: Boolean, assetPath: String?): DocumentContent = withContext(Dispatchers.IO) {
+        // Clear prior bitmap cache when a new document is opened
+        clearCache()
+
         try {
             var tempFile: File? = null
             val pfd: ParcelFileDescriptor
@@ -36,10 +50,15 @@ class PdfHandler(private val context: Context) {
                 }
                 pfd = ParcelFileDescriptor.open(file, ParcelFileDescriptor.MODE_READ_ONLY)
             } else {
-                // content:// scheme. PdfRenderer requires a seekable file descriptor.
-                // Many content providers return non-seekable pipes, so copy to temp cache file.
-                val stream = context.contentResolver.openInputStream(uri)
-                    ?: return@withContext DocumentContent.Error("Cannot access document. Permission may have expired.", isAccessRevoked = true)
+                // Content URI (from Downloads, Files app, SAF, or file manager)
+                // Use ContentResolver without assuming filesystem path
+                val stream = try {
+                    context.contentResolver.openInputStream(uri)
+                } catch (e: SecurityException) {
+                    return@withContext DocumentContent.Error("Access to this document was revoked by Android.", isAccessRevoked = true)
+                } ?: return@withContext DocumentContent.Error("Cannot read document. Permission may have expired or file was moved.", isAccessRevoked = true)
+
+                // Android PdfRenderer requires a seekable file descriptor. Copy safely to app cache:
                 tempFile = copyStreamToTemp(stream, "pdf_doc")
                 pfd = ParcelFileDescriptor.open(tempFile, ParcelFileDescriptor.MODE_READ_ONLY)
             }
@@ -75,11 +94,18 @@ class PdfHandler(private val context: Context) {
         try {
             synchronized(pdf.renderer) {
                 val page = pdf.renderer.openPage(pageIndex)
-                val width = (page.width * scale).toInt().coerceAtLeast(300)
-                val height = (page.height * scale).toInt().coerceAtLeast(400)
+
+                // Cap maximum rendering dimension to 2048px to prevent OOM on enormous vector blueprints
+                val baseW = page.width
+                val baseH = page.height
+                val maxDim = 2048
+                val effectiveScale = minOf(scale, maxDim.toFloat() / maxOf(baseW, baseH).coerceAtLeast(1).toFloat())
+
+                val width = (baseW * effectiveScale).toInt().coerceAtLeast(200)
+                val height = (baseH * effectiveScale).toInt().coerceAtLeast(200)
 
                 val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
-                // Fill with white background
+                // Retain natural page white background by default to preserve diagram/photo contrast
                 bitmap.eraseColor(Color.WHITE)
 
                 page.render(bitmap, null, null, PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY)

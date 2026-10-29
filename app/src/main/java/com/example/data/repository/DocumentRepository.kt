@@ -37,7 +37,8 @@ class DocumentRepository(
     suspend fun recordDocumentOpened(
         uri: Uri,
         isAsset: Boolean = false,
-        assetPath: String? = null
+        assetPath: String? = null,
+        mimeTypeHint: String? = null
     ): DocumentRef = withContext(Dispatchers.IO) {
         val uriString = uri.toString()
 
@@ -52,7 +53,7 @@ class DocumentRepository(
         }
 
         // Query metadata
-        val metadata = extractMetadata(uri, isAsset, assetPath)
+        val metadata = extractMetadata(uri, isAsset, assetPath, mimeTypeHint)
         val existing = dao.getDocumentByUri(uriString)
 
         val entity = RecentDocumentEntity(
@@ -104,10 +105,20 @@ class DocumentRepository(
         }
     }
 
-    private fun extractMetadata(uri: Uri, isAsset: Boolean, assetPath: String?): DocumentRef {
+    private fun extractMetadata(
+        uri: Uri,
+        isAsset: Boolean,
+        assetPath: String?,
+        mimeTypeHint: String? = null
+    ): DocumentRef {
         var name = "Document"
         var size: Long = 0
         var mime = context.contentResolver.getType(uri) ?: ""
+        if (mime.isBlank() || mime == "application/octet-stream") {
+            if (!mimeTypeHint.isNullOrBlank()) {
+                mime = mimeTypeHint
+            }
+        }
 
         if (isAsset && assetPath != null) {
             name = assetPath.substringAfterLast('/')
@@ -134,6 +145,40 @@ class DocumentRepository(
                 }
             } catch (e: Exception) {
                 Log.w("DocumentRepository", "Metadata query failed: ${e.message}")
+            }
+
+            // Fallback for file size via file descriptor if provider did not report size
+            if (size <= 0) {
+                try {
+                    context.contentResolver.openFileDescriptor(uri, "r")?.use { pfd ->
+                        if (pfd.statSize > 0) size = pfd.statSize
+                    }
+                } catch (e: Exception) {}
+            }
+
+            // Fallback for filename from URI path segment
+            if (name == "Document") {
+                val seg = uri.lastPathSegment?.substringAfterLast('/')
+                if (!seg.isNullOrBlank()) {
+                    name = seg
+                } else {
+                    // Try extension from mime
+                    val formatGuess = DocumentFormat.fromFileNameOrMime(name, mime)
+                    name = when (formatGuess) {
+                        DocumentFormat.POWERPOINT -> "Presentation.pptx"
+                        DocumentFormat.WORD -> "Document.docx"
+                        DocumentFormat.EXCEL -> "Spreadsheet.xlsx"
+                        DocumentFormat.PDF -> "Document.pdf"
+                        DocumentFormat.EPUB -> "Book.epub"
+                        DocumentFormat.MARKDOWN -> "Document.md"
+                        DocumentFormat.CSV -> "Data.csv"
+                        DocumentFormat.TEXT -> "Document.txt"
+                        DocumentFormat.JSON -> "Document.json"
+                        DocumentFormat.XML -> "Document.xml"
+                        DocumentFormat.IMAGE -> "Image.png"
+                        else -> "Document"
+                    }
+                }
             }
         } else if (uri.scheme == "file") {
             val file = File(uri.path ?: "")

@@ -78,12 +78,12 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    fun openFromUri(uri: Uri) {
+    fun openFromUri(uri: Uri, mimeTypeHint: String? = null) {
         viewModelScope.launch(Dispatchers.IO) {
             _isLoading.value = true
             (_activeContent.value as? DocumentContent.Pdf)?.close()
 
-            val recorded = repository.recordDocumentOpened(uri = uri)
+            val recorded = repository.recordDocumentOpened(uri = uri, mimeTypeHint = mimeTypeHint)
             _activeDocument.value = recorded
 
             val content = parser.parse(recorded)

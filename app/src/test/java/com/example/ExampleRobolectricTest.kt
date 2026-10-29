@@ -66,6 +66,29 @@ class ExampleRobolectricTest {
     }
 
     @Test
+    fun verifyPowerPointFormatDetection() {
+        // Modern pptx extension
+        assertEquals(DocumentFormat.POWERPOINT, DocumentFormat.fromFileNameOrMime("presentation.pptx", null))
+        // Legacy ppt extension
+        assertEquals(DocumentFormat.POWERPOINT, DocumentFormat.fromFileNameOrMime("slides.ppt", null))
+        // Modern PPTX MIME type
+        assertEquals(
+            DocumentFormat.POWERPOINT,
+            DocumentFormat.fromFileNameOrMime("unnamed", "application/vnd.openxmlformats-officedocument.presentationml.presentation")
+        )
+        // Legacy PPT MIME type
+        assertEquals(
+            DocumentFormat.POWERPOINT,
+            DocumentFormat.fromFileNameOrMime("unnamed", "application/vnd.ms-powerpoint")
+        )
+        // WhatsApp or alternative ppt mime
+        assertEquals(
+            DocumentFormat.POWERPOINT,
+            DocumentFormat.fromFileNameOrMime("unnamed", "application/powerpoint")
+        )
+    }
+
+    @Test
     fun verifySampleSeeding() = runBlocking {
         val context = ApplicationProvider.getApplicationContext<Context>()
         val repo = DocumentRepository(context)
