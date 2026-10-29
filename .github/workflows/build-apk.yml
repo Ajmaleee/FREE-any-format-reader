@@ -12,11 +12,11 @@ permissions:
 
 jobs:
   build:
-    name: Build debug APK
+    name: Build Universal Reader APK
     runs-on: ubuntu-latest
 
     steps:
-      - name: Download repository
+      - name: Checkout repository
         uses: actions/checkout@v4
 
       - name: Set up Java
@@ -31,12 +31,16 @@ jobs:
           gradle-version: '9.3.1'
 
       - name: Set up Android SDK
-        uses: android-actions/setup-android@v3
+        uses: android-actions/setup-android@v4
+        with:
+          packages: ''
 
-      - name: Install required Android SDK packages
+      - name: Install Android SDK packages
         run: |
-          yes | sdkmanager --licenses
-          sdkmanager "platforms;android-36.1" "build-tools;36.0.0" "platform-tools"
+          sdkmanager --install \
+            "platforms;android-36.1" \
+            "build-tools;36.0.0" \
+            "platform-tools"
 
       - name: Generate temporary debug signing key
         run: |
@@ -50,7 +54,7 @@ jobs:
             -keysize 2048 \
             -validity 10000
 
-      - name: Compile Android app
+      - name: Build debug APK
         run: gradle :app:assembleDebug --stacktrace
 
       - name: Upload APK
