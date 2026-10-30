@@ -49,11 +49,11 @@ class WordHandler(private val context: Context) {
     }
 
     private fun parseDocumentXml(xml: String): List<WordElement> {
-        val elements = mutableListOf<WordElement>()
-        val parser = Xml.newPullParser()
-        parser.setInput(StringReader(xml))
+        return try {
+            val elements = mutableListOf<WordElement>()
+            val parser = XmlSanitizer.createParser(xml)
 
-        var eventType = parser.eventType
+            var eventType = parser.eventType
         var inTable = false
         var currentTableHeaders = mutableListOf<String>()
         var currentTableRows = mutableListOf<List<String>>()
@@ -196,7 +196,40 @@ class WordHandler(private val context: Context) {
             }
             eventType = parser.next()
         }
+        elements
+    } catch (e: Exception) {
+        parseDocumentXmlFallback(xml)
+    }
+}
 
+    private fun parseDocumentXmlFallback(xml: String): List<WordElement> {
+        val elements = mutableListOf<WordElement>()
+        val pPattern = Regex("<(?:[a-zA-Z0-9_-]+:)?p\\b[^>]*>(.*?)</(?:[a-zA-Z0-9_-]+:)?p>", RegexOption.DOT_MATCHES_ALL)
+        val tPattern = Regex("<(?:[a-zA-Z0-9_-]+:)?t\\b[^>]*>(.*?)</(?:[a-zA-Z0-9_-]+:)?t>", RegexOption.DOT_MATCHES_ALL)
+        val pStylePattern = Regex("<(?:[a-zA-Z0-9_-]+:)?pStyle\\b[^>]*\\bval=\"([^\"]*)\"", RegexOption.IGNORE_CASE)
+
+        for (pMatch in pPattern.findAll(xml)) {
+            val pContent = pMatch.groupValues[1]
+            val styleMatch = pStylePattern.find(pContent)?.groupValues?.get(1)?.lowercase() ?: ""
+            val texts = tPattern.findAll(pContent).map { XmlSanitizer.unescapeXml(it.groupValues[1]) }.filter { it.isNotBlank() }.toList()
+            val fullText = texts.joinToString("").trim()
+            if (fullText.isNotBlank()) {
+                when {
+                    styleMatch.contains("heading1") || styleMatch.contains("title") -> {
+                        elements.add(WordElement.Heading(1, fullText))
+                    }
+                    styleMatch.contains("heading2") -> {
+                        elements.add(WordElement.Heading(2, fullText))
+                    }
+                    styleMatch.contains("heading3") -> {
+                        elements.add(WordElement.Heading(3, fullText))
+                    }
+                    else -> {
+                        elements.add(WordElement.Paragraph(fullText, listOf(WordRun(fullText))))
+                    }
+                }
+            }
+        }
         return elements
     }
 }

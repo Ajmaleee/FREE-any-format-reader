@@ -8,6 +8,7 @@ import com.example.data.model.DocumentRef
 import com.example.data.preferences.UserPreferencesRepository
 import com.example.data.repository.DocumentRepository
 import com.example.parser.CsvHandler
+import com.example.parser.XmlSanitizer
 import com.example.ui.theme.AppThemeMode
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
@@ -99,5 +100,57 @@ class ExampleRobolectricTest {
         assertTrue("Expected PDF sample in recents", recents.any { it.format == DocumentFormat.PDF })
         assertTrue("Expected Word sample in recents", recents.any { it.format == DocumentFormat.WORD })
         assertTrue("Expected Excel sample in recents", recents.any { it.format == DocumentFormat.EXCEL })
+        assertTrue("Expected PowerPoint sample in recents", recents.any { it.format == DocumentFormat.POWERPOINT })
+    }
+
+    @Test
+    fun verifyXmlSanitization() {
+        val input = "R&D and Privacy & Performance &amp; 1 < 2 & 3 > 2 &quot;hello&quot;"
+        val sanitized = XmlSanitizer.sanitize(input)
+        assertFalse("Should not contain bare unescaped ampersand followed by letters", sanitized.contains("R&D"))
+        assertTrue("Should contain escaped R&amp;D", sanitized.contains("R&amp;D"))
+        assertTrue("Should preserve existing entity &amp;", sanitized.contains("&amp;"))
+        assertTrue("Should preserve existing entity &quot;", sanitized.contains("&quot;"))
+    }
+
+    @Test
+    fun verifyPowerPointSampleParsesSuccessfully() = runBlocking {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val parser = com.example.parser.DocumentParser(context)
+        val doc = DocumentRef(
+            uri = "asset://samples/product_design_systems.pptx",
+            displayName = "Product Design Systems.pptx",
+            mimeType = "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+            format = DocumentFormat.POWERPOINT,
+            fileSizeBytes = 1000,
+            lastOpenedTimestamp = System.currentTimeMillis(),
+            isAsset = true,
+            assetPath = "samples/product_design_systems.pptx"
+        )
+        val content = parser.parse(doc)
+        assertTrue("Expected PowerPoint content, got: $content", content is com.example.parser.DocumentContent.PowerPoint)
+        val ppt = content as com.example.parser.DocumentContent.PowerPoint
+        assertTrue("Expected slides in presentation", ppt.slides.isNotEmpty())
+    }
+
+    @Test
+    fun verifyExcelSampleParsesSuccessfully() = runBlocking {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val parser = com.example.parser.DocumentParser(context)
+        val doc = DocumentRef(
+            uri = "asset://samples/financial_model_q3.xlsx",
+            displayName = "Financial Model Q3.xlsx",
+            mimeType = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            format = DocumentFormat.EXCEL,
+            fileSizeBytes = 1000,
+            lastOpenedTimestamp = System.currentTimeMillis(),
+            isAsset = true,
+            assetPath = "samples/financial_model_q3.xlsx"
+        )
+        val content = parser.parse(doc)
+        assertTrue("Expected Excel content, got: $content", content is com.example.parser.DocumentContent.Excel)
+        val excel = content as com.example.parser.DocumentContent.Excel
+        assertTrue("Expected sheets in spreadsheet", excel.sheets.isNotEmpty())
+        assertTrue("Expected rows in sheet", excel.sheets[0].rows.isNotEmpty())
     }
 }

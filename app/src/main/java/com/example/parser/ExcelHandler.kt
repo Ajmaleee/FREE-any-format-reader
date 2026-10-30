@@ -62,55 +62,81 @@ class ExcelHandler(private val context: Context) {
 
     private fun parseSharedStrings(bytes: ByteArray?): List<String> {
         if (bytes == null) return emptyList()
-        val list = mutableListOf<String>()
-        val parser = Xml.newPullParser()
-        parser.setInput(ByteArrayInputStream(bytes), "UTF-8")
+        return try {
+            val list = mutableListOf<String>()
+            val parser = XmlSanitizer.createParser(bytes)
 
-        var eventType = parser.eventType
-        var currentText = StringBuilder()
-        var insideSi = false
+            var eventType = parser.eventType
+            var currentText = StringBuilder()
+            var insideSi = false
 
-        while (eventType != XmlPullParser.END_DOCUMENT) {
-            val tag = parser.name?.substringAfterLast(':')?.lowercase() ?: ""
-            when (eventType) {
-                XmlPullParser.START_TAG -> {
-                    if (tag == "si") {
-                        insideSi = true
-                        currentText = StringBuilder()
-                    } else if (tag == "t" && insideSi) {
-                        currentText.append(parser.nextText())
+            while (eventType != XmlPullParser.END_DOCUMENT) {
+                val tag = parser.name?.substringAfterLast(':')?.lowercase() ?: ""
+                when (eventType) {
+                    XmlPullParser.START_TAG -> {
+                        if (tag == "si") {
+                            insideSi = true
+                            currentText = StringBuilder()
+                        } else if (tag == "t" && insideSi) {
+                            currentText.append(parser.nextText())
+                        }
+                    }
+                    XmlPullParser.END_TAG -> {
+                        if (tag == "si") {
+                            list.add(currentText.toString())
+                            insideSi = false
+                        }
                     }
                 }
-                XmlPullParser.END_TAG -> {
-                    if (tag == "si") {
-                        list.add(currentText.toString())
-                        insideSi = false
-                    }
-                }
+                eventType = parser.next()
             }
-            eventType = parser.next()
+            list
+        } catch (e: Exception) {
+            parseSharedStringsFallback(bytes)
+        }
+    }
+
+    private fun parseSharedStringsFallback(bytes: ByteArray): List<String> {
+        val raw = String(bytes, Charsets.UTF_8)
+        val list = mutableListOf<String>()
+        val siPattern = Regex("<(?:[a-zA-Z0-9_-]+:)?si\\b[^>]*>(.*?)</(?:[a-zA-Z0-9_-]+:)?si>", RegexOption.DOT_MATCHES_ALL)
+        val tPattern = Regex("<(?:[a-zA-Z0-9_-]+:)?t\\b[^>]*>(.*?)</(?:[a-zA-Z0-9_-]+:)?t>", RegexOption.DOT_MATCHES_ALL)
+
+        for (siMatch in siPattern.findAll(raw)) {
+            val siContent = siMatch.groupValues[1]
+            val textParts = tPattern.findAll(siContent).map { XmlSanitizer.unescapeXml(it.groupValues[1]) }
+            list.add(textParts.joinToString(""))
         }
         return list
     }
 
     private fun parseWorkbookSheets(bytes: ByteArray?): List<String> {
         if (bytes == null) return emptyList()
-        val list = mutableListOf<String>()
-        val parser = Xml.newPullParser()
-        parser.setInput(ByteArrayInputStream(bytes), "UTF-8")
+        return try {
+            val list = mutableListOf<String>()
+            val parser = XmlSanitizer.createParser(bytes)
 
-        var eventType = parser.eventType
-        while (eventType != XmlPullParser.END_DOCUMENT) {
-            val localTag = parser.name?.substringAfterLast(':')?.lowercase() ?: ""
-            if (eventType == XmlPullParser.START_TAG && localTag == "sheet") {
-                val name = parser.getAttributeValue(null, "name")
-                if (!name.isNullOrBlank()) {
-                    list.add(name)
+            var eventType = parser.eventType
+            while (eventType != XmlPullParser.END_DOCUMENT) {
+                val localTag = parser.name?.substringAfterLast(':')?.lowercase() ?: ""
+                if (eventType == XmlPullParser.START_TAG && localTag == "sheet") {
+                    val name = parser.getAttributeValue(null, "name")
+                    if (!name.isNullOrBlank()) {
+                        list.add(name)
+                    }
                 }
+                eventType = parser.next()
             }
-            eventType = parser.next()
+            list
+        } catch (e: Exception) {
+            parseWorkbookSheetsFallback(bytes)
         }
-        return list
+    }
+
+    private fun parseWorkbookSheetsFallback(bytes: ByteArray): List<String> {
+        val raw = String(bytes, Charsets.UTF_8)
+        val sheetPattern = Regex("<(?:[a-zA-Z0-9_-]+:)?sheet\\b[^>]*\\bname=\"([^\"]+)\"", RegexOption.IGNORE_CASE)
+        return sheetPattern.findAll(raw).map { XmlSanitizer.unescapeXml(it.groupValues[1]) }.toList()
     }
 
     private fun parseWorksheet(bytes: ByteArray?, sharedStrings: List<String>, sheetName: String): ExcelSheet {
@@ -118,51 +144,58 @@ class ExcelHandler(private val context: Context) {
             return ExcelSheet(sheetName, emptyList(), emptyList(), 0)
         }
 
-        val rowsMap = mutableMapOf<Int, MutableMap<Int, String>>()
-        val parser = Xml.newPullParser()
-        parser.setInput(ByteArrayInputStream(bytes), "UTF-8")
+        return try {
+            val rowsMap = mutableMapOf<Int, MutableMap<Int, String>>()
+            val parser = XmlSanitizer.createParser(bytes)
 
-        var eventType = parser.eventType
-        var currentRowIndex = 0
-        var currentCellRef = ""
-        var currentCellType = ""
-        var maxColIndex = 0
+            var eventType = parser.eventType
+            var currentRowIndex = 0
+            var currentCellRef = ""
+            var currentCellType = ""
+            var maxColIndex = 0
 
-        while (eventType != XmlPullParser.END_DOCUMENT) {
-            val tag = parser.name?.substringAfterLast(':')?.lowercase() ?: ""
-            when (eventType) {
-                XmlPullParser.START_TAG -> {
-                    when (tag) {
-                        "row" -> {
-                            val r = parser.getAttributeValue(null, "r")?.toIntOrNull() ?: (currentRowIndex + 1)
-                            currentRowIndex = r
-                            if (!rowsMap.containsKey(currentRowIndex)) {
-                                rowsMap[currentRowIndex] = mutableMapOf()
+            while (eventType != XmlPullParser.END_DOCUMENT) {
+                val tag = parser.name?.substringAfterLast(':')?.lowercase() ?: ""
+                when (eventType) {
+                    XmlPullParser.START_TAG -> {
+                        when (tag) {
+                            "row" -> {
+                                val r = parser.getAttributeValue(null, "r")?.toIntOrNull() ?: (currentRowIndex + 1)
+                                currentRowIndex = r
+                                if (!rowsMap.containsKey(currentRowIndex)) {
+                                    rowsMap[currentRowIndex] = mutableMapOf()
+                                }
                             }
-                        }
-                        "c" -> {
-                            currentCellRef = parser.getAttributeValue(null, "r") ?: ""
-                            currentCellType = parser.getAttributeValue(null, "t") ?: ""
-                        }
-                        "v" -> {
-                            val rawValue = parser.nextText()
-                            val displayValue = if (currentCellType == "s") {
-                                val sIndex = rawValue.toIntOrNull() ?: -1
-                                sharedStrings.getOrNull(sIndex) ?: rawValue
-                            } else {
-                                rawValue
+                            "c" -> {
+                                currentCellRef = parser.getAttributeValue(null, "r") ?: ""
+                                currentCellType = parser.getAttributeValue(null, "t") ?: ""
                             }
+                            "v" -> {
+                                val rawValue = parser.nextText()
+                                val displayValue = if (currentCellType == "s") {
+                                    val sIndex = rawValue.toIntOrNull() ?: -1
+                                    sharedStrings.getOrNull(sIndex) ?: rawValue
+                                } else {
+                                    rawValue
+                                }
 
-                            val colIndex = parseColumnIndex(currentCellRef)
-                            if (colIndex > maxColIndex) maxColIndex = colIndex
-                            rowsMap.getOrPut(currentRowIndex) { mutableMapOf() }[colIndex] = displayValue
+                                val colIndex = parseColumnIndex(currentCellRef)
+                                if (colIndex > maxColIndex) maxColIndex = colIndex
+                                rowsMap.getOrPut(currentRowIndex) { mutableMapOf() }[colIndex] = displayValue
+                            }
                         }
                     }
                 }
+                eventType = parser.next()
             }
-            eventType = parser.next()
-        }
 
+            buildSheetFromRowsMap(rowsMap, maxColIndex, sheetName)
+        } catch (e: Exception) {
+            parseWorksheetFallback(bytes, sharedStrings, sheetName)
+        }
+    }
+
+    private fun buildSheetFromRowsMap(rowsMap: Map<Int, Map<Int, String>>, maxColIndex: Int, sheetName: String): ExcelSheet {
         val sortedRowIndices = rowsMap.keys.sorted()
         val headers = mutableListOf<String>()
         val contentRows = mutableListOf<List<String>>()
@@ -181,7 +214,7 @@ class ExcelHandler(private val context: Context) {
         }
 
         // If headers are all blank, generate A, B, C...
-        val effectiveHeaders = if (headers.all { it.isBlank() }) {
+        val effectiveHeaders = if (headers.isEmpty() || headers.all { it.isBlank() }) {
             (0 until totalCols).map { indexToColumnName(it) }
         } else {
             headers.mapIndexed { idx, h -> if (h.isBlank()) indexToColumnName(idx) else h }
@@ -193,6 +226,41 @@ class ExcelHandler(private val context: Context) {
             rows = contentRows,
             totalRowCount = rowsMap.size
         )
+    }
+
+    private fun parseWorksheetFallback(bytes: ByteArray, sharedStrings: List<String>, sheetName: String): ExcelSheet {
+        val raw = String(bytes, Charsets.UTF_8)
+        val rowsMap = mutableMapOf<Int, MutableMap<Int, String>>()
+        var maxColIndex = 0
+
+        val rowPattern = Regex("<(?:[a-zA-Z0-9_-]+:)?row\\b(?:[^>]*?\\br=\"(\\d+)\")?[^>]*>(.*?)</(?:[a-zA-Z0-9_-]+:)?row>", RegexOption.DOT_MATCHES_ALL)
+        val cellPattern = Regex("<(?:[a-zA-Z0-9_-]+:)?c\\b(?:[^>]*?\\br=\"([A-Za-z0-9]+)\")?(?:[^>]*?\\bt=\"([^\"]*)\")?[^>]*>.*?<(?:[a-zA-Z0-9_-]+:)?v>(.*?)</(?:[a-zA-Z0-9_-]+:)?v>", RegexOption.DOT_MATCHES_ALL)
+
+        var fallbackRowIdx = 1
+        for (rowMatch in rowPattern.findAll(raw)) {
+            val rAttr = rowMatch.groupValues[1].toIntOrNull() ?: fallbackRowIdx
+            val rowContent = rowMatch.groupValues[2]
+
+            for (cellMatch in cellPattern.findAll(rowContent)) {
+                val cellRef = cellMatch.groupValues[1]
+                val cellType = cellMatch.groupValues[2]
+                val rawVal = cellMatch.groupValues[3].trim()
+
+                val displayVal = if (cellType == "s") {
+                    val sIdx = rawVal.toIntOrNull() ?: -1
+                    sharedStrings.getOrNull(sIdx) ?: rawVal
+                } else {
+                    XmlSanitizer.unescapeXml(rawVal)
+                }
+
+                val colIndex = parseColumnIndex(cellRef)
+                if (colIndex > maxColIndex) maxColIndex = colIndex
+                rowsMap.getOrPut(rAttr) { mutableMapOf() }[colIndex] = displayVal
+            }
+            fallbackRowIdx = rAttr + 1
+        }
+
+        return buildSheetFromRowsMap(rowsMap, maxColIndex, sheetName)
     }
 
     private fun parseColumnIndex(cellRef: String): Int {

@@ -90,35 +90,77 @@ class PowerPointHandler(private val context: Context) {
             return SlideItem(slideNum, "Slide $slideNum")
         }
 
-        val parser = Xml.newPullParser()
-        parser.setInput(ByteArrayInputStream(bytes), "UTF-8")
+        return try {
+            val parser = XmlSanitizer.createParser(bytes)
+            var eventType = parser.eventType
+            val textBlocks = mutableListOf<String>()
+            var currentPara = StringBuilder()
 
-        var eventType = parser.eventType
-        val textBlocks = mutableListOf<String>()
-        var currentPara = StringBuilder()
+            while (eventType != XmlPullParser.END_DOCUMENT) {
+                val rawTag = parser.name
+                val localTag = rawTag?.substringAfterLast(':')?.lowercase() ?: ""
 
-        while (eventType != XmlPullParser.END_DOCUMENT) {
-            val rawTag = parser.name
-            val localTag = rawTag?.substringAfterLast(':')?.lowercase() ?: ""
-
-            when (eventType) {
-                XmlPullParser.START_TAG -> {
-                    if (localTag == "p") {
-                        currentPara = StringBuilder()
-                    } else if (localTag == "t") {
-                        currentPara.append(parser.nextText()).append(" ")
+                when (eventType) {
+                    XmlPullParser.START_TAG -> {
+                        if (localTag == "p") {
+                            currentPara = StringBuilder()
+                        } else if (localTag == "t") {
+                            currentPara.append(parser.nextText()).append(" ")
+                        }
                     }
-                }
-                XmlPullParser.END_TAG -> {
-                    if (localTag == "p") {
-                        val text = currentPara.toString().trim()
-                        if (text.isNotBlank()) {
-                            textBlocks.add(text)
+                    XmlPullParser.END_TAG -> {
+                        if (localTag == "p") {
+                            val text = currentPara.toString().trim()
+                            if (text.isNotBlank()) {
+                                textBlocks.add(text)
+                            }
                         }
                     }
                 }
+                eventType = parser.next()
             }
-            eventType = parser.next()
+
+            val title = textBlocks.firstOrNull() ?: "Slide $slideNum"
+            val subtitle = if (textBlocks.size > 1 && textBlocks[1].length < 100 && !textBlocks[1].startsWith("•")) {
+                textBlocks[1]
+            } else null
+
+            val startIndex = if (subtitle != null) 2 else 1
+            val bullets = if (textBlocks.size > startIndex) {
+                textBlocks.subList(startIndex, textBlocks.size).map {
+                    it.removePrefix("•").removePrefix("-").trim()
+                }.filter { it.isNotBlank() }
+            } else emptyList()
+
+            SlideItem(
+                slideNumber = slideNum,
+                title = title,
+                subtitle = subtitle,
+                bulletPoints = bullets
+            )
+        } catch (e: Exception) {
+            parseSlideFallback(bytes, slideNum)
+        }
+    }
+
+    private fun parseSlideFallback(bytes: ByteArray, slideNum: Int): SlideItem {
+        val raw = String(bytes, Charsets.UTF_8)
+        val textBlocks = mutableListOf<String>()
+        val pPattern = Regex("<(?:[a-zA-Z0-9_-]+:)?p\\b[^>]*>(.*?)</(?:[a-zA-Z0-9_-]+:)?p>", RegexOption.DOT_MATCHES_ALL)
+        val tPattern = Regex("<(?:[a-zA-Z0-9_-]+:)?t\\b[^>]*>(.*?)</(?:[a-zA-Z0-9_-]+:)?t>", RegexOption.DOT_MATCHES_ALL)
+
+        val pMatches = pPattern.findAll(raw).toList()
+        if (pMatches.isNotEmpty()) {
+            for (pMatch in pMatches) {
+                val pContent = pMatch.groupValues[1]
+                val tTexts = tPattern.findAll(pContent).map { XmlSanitizer.unescapeXml(it.groupValues[1].trim()) }.filter { it.isNotBlank() }.toList()
+                if (tTexts.isNotEmpty()) {
+                    textBlocks.add(tTexts.joinToString(" "))
+                }
+            }
+        } else {
+            val allT = tPattern.findAll(raw).map { XmlSanitizer.unescapeXml(it.groupValues[1].trim()) }.filter { it.isNotBlank() }.toList()
+            textBlocks.addAll(allT)
         }
 
         val title = textBlocks.firstOrNull() ?: "Slide $slideNum"
